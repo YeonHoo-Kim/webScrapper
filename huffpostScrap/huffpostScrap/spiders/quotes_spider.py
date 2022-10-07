@@ -22,6 +22,7 @@ class QuoteSpider(scrapy.Spider):
         # response.css("title::text").extract_first() ... get title tag's text (first one only)
         # response.css("span.text::text").extract() ... get span tag's texts with class = text
         # response.css("span.text::text")[1].extract() ... get span tag's 2nd text with class = text
+        # response.css(".author::text").extract() ... get class author's text
 
         title = response.css('title::text').extract() 
         yield {'titletext': title}
