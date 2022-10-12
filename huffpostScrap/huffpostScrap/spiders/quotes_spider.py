@@ -2,12 +2,14 @@ import scrapy
 import time
 from huffpostScrap.items import HuffpostscrapCommentItem
 from huffpostScrap.items import HuffpostscrapItem
+from selenium import webdriver
 from scrapy_selenium import SeleniumRequest
 from selenium.webdriver import ActionChains
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+
 
 options = Options()
 # options.add_argument('--headless') # headless모드 브라우저가 뜨지 않고 실행됩니다.
@@ -21,11 +23,18 @@ class QuoteSpider(scrapy.Spider):
     # start_urls: list of websites we want to scrap
     name = 'posts'
     start_urls = [
-        'https://www.huffpost.com/entry/simone-biles-withdraws-floor-event_n_61061168e4b0f9b5a234254d#comments'
-        # 'https://www.huffpost.com/entry/anthony-fauci-covid-19-vaccine-mandates-quite-possible_n_5fef5542c5b6ec8ae0b2aa1f'
+        'https://www.huffpost.com/archive/2021-01-01'
+        # 'https://www.huffpost.com/entry/simone-biles-withdraws-floor-event_n_61061168e4b0f9b5a234254d#comments'
     ]
 
     def parse(self, response):
+        cards = response.css('div.zone__content > div')
+        # for index, card in enumerate(cards):
+        url = cards[0].css('div.card__content > a::attr(href)').get()
+        print(f'link index of 2021-01-01: {0}')
+        yield scrapy.Request(f'{url}#comments', callback=self.parse_posts)
+
+    def parse_posts(self, response):
         # extract directly by css-selector
         # extract_first() method gets only text (not list)
 
@@ -39,11 +48,9 @@ class QuoteSpider(scrapy.Spider):
         item['author'] = response.css('h2.author-card__name > a.cet-internal-link > span::text').get()
         item['time'] = response.css('div.timestamp > time::attr(datetime)').get()
         
-        # use selenium to retrieve a shadow dom 
-        from selenium import webdriver
+        # use selenium to retrieve a shadow dom (each drivers)
         driver = webdriver.Chrome('/Users/r14798/projects/web-scraper/huffpostScrap/chromedriver/chromedriver_mac_arm64', chrome_options=options)
-
-        driver.get(f'{self.start_urls[0]}#comments')
+        driver.get(f'{response.url}#comments')
         # print('Debuggin: Driver get Success!!!\n')
         # explicit wait
         shadow_parent = WebDriverWait(driver, 15).until(
