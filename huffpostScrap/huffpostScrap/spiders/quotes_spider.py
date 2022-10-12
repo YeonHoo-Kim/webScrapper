@@ -29,10 +29,10 @@ class QuoteSpider(scrapy.Spider):
 
     def parse(self, response):
         cards = response.css('div.zone__content > div')
-        # for index, card in enumerate(cards):
-        url = cards[0].css('div.card__content > a::attr(href)').get()
-        print(f'link index of 2021-01-01: {0}')
-        yield scrapy.Request(f'{url}#comments', callback=self.parse_posts)
+        for index, card in enumerate(cards):
+            url = card.css('div.card__content > a::attr(href)').get()
+            # print(f'link index of 2021-01-01: {0}')
+            yield scrapy.Request(f'{url}#comments', callback=self.parse_posts)
 
     def parse_posts(self, response):
         # extract directly by css-selector
