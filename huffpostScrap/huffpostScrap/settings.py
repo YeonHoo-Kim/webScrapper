@@ -7,14 +7,6 @@
 #     https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
 #     https://docs.scrapy.org/en/latest/topics/spider-middleware.html
 
-SELENIUM_DRIVER_NAME = 'chrome'
-SELENIUM_DRIVER_EXECUTABLE_PATH = '/Users/r14798/projects/web-scraper/huffpostScrap/chromedriver/chromedriver_mac_arm64'
-SELENIUM_DRIVER_ARGUMENTS=['--headless']
-
-DOWNLOADER_MIDDLEWARES = {
-    'scrapy_selenium.SeleniumMiddleware': 800
-}
-
 BOT_NAME = 'huffpostScrap'
 
 SPIDER_MODULES = ['huffpostScrap.spiders']
@@ -94,3 +86,7 @@ ROBOTSTXT_OBEY = True
 #HTTPCACHE_DIR = 'httpcache'
 #HTTPCACHE_IGNORE_HTTP_CODES = []
 #HTTPCACHE_STORAGE = 'scrapy.extensions.httpcache.FilesystemCacheStorage'
+
+# json file unicode settings
+FEED = 'json'
+FEED_EXPORT_ENCODING = 'utf-8'

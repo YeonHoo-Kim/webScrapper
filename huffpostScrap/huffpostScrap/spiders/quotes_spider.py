@@ -1,5 +1,6 @@
 import scrapy
 import time
+from huffpostScrap.items import HuffpostscrapCommentItem
 from huffpostScrap.items import HuffpostscrapItem
 from scrapy_selenium import SeleniumRequest
 from selenium.webdriver import ActionChains
@@ -9,7 +10,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 options = Options()
-# options.add_argument('--headless') #headless모드 브라우저가 뜨지 않고 실행됩니다.
+# options.add_argument('--headless') # headless모드 브라우저가 뜨지 않고 실행됩니다.
+options.add_argument("--blink-setting=imagesEnable=false"); # 페이지 로딩에서 이미지 제외
 
 class QuoteSpider(scrapy.Spider):
     # variables (name, start_url) should be this name
@@ -17,16 +19,11 @@ class QuoteSpider(scrapy.Spider):
 
     # name: spider name
     # start_urls: list of websites we want to scrap
-    name = 'quotes'
-    start_urls = ['https://www.huffpost.com/entry/anthony-fauci-covid-19-vaccine-mandates-quite-possible_n_5fef5542c5b6ec8ae0b2aa1f']
-    
-    # def start_requests(self):
-    #     url = self.base_url
-    #     yield SeleniumRequest(
-    #         url=url, 
-    #         callback=self.parse,
-    #         # script="document.querySelector('.entry__content-and-right-rail-container .social-buttons__icons__item--comments').click();"
-    #     )
+    name = 'posts'
+    start_urls = [
+        'https://www.huffpost.com/entry/simone-biles-withdraws-floor-event_n_61061168e4b0f9b5a234254d#comments'
+        # 'https://www.huffpost.com/entry/anthony-fauci-covid-19-vaccine-mandates-quite-possible_n_5fef5542c5b6ec8ae0b2aa1f'
+    ]
 
     def parse(self, response):
         # extract directly by css-selector
@@ -35,30 +32,25 @@ class QuoteSpider(scrapy.Spider):
         # can use response data directly from cmd
         # scrapy shell "http://quotes.toscrape.com/" -> check examples...
 
-        # examples... (id: "#", class: ".")
-        # response.css("title::text").extract_first() ... get title tag's text (first one only)
-        # response.css("span.text::text").extract() ... get span tag's texts with class = text
-        # response.css("span.text::text")[1].extract() ... get span tag's 2nd text with class = text
-        # response.css(".author::text").extract() ... get class author's text
         item = HuffpostscrapItem()
 
         item['headline'] = response.css('h1.headline::text').get()
         item['dek'] = response.css('div.dek::text').get()
         item['author'] = response.css('h2.author-card__name > a.cet-internal-link > span::text').get()
-        item['time'] = response.css('div.timestamp > time').get()
+        item['time'] = response.css('div.timestamp > time::attr(datetime)').get()
         
         # use selenium to retrieve a shadow dom 
         from selenium import webdriver
         driver = webdriver.Chrome('/Users/r14798/projects/web-scraper/huffpostScrap/chromedriver/chromedriver_mac_arm64', chrome_options=options)
 
         driver.get(f'{self.start_urls[0]}#comments')
-        # implicit wait
-        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CSS_SELECTOR, "#comments > div > div > div")))
-        # driver.find_element(By.CSS_SELECTOR, '.entry__content-and-right-rail-container .social-buttons__icons__item--comments').click()
-        # element.click()
-        # WebDriverWait(element, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, '#comments > div > div > div')))
+        # print('Debuggin: Driver get Success!!!\n')
+        # explicit wait
+        shadow_parent = WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "#comments > div.comments__container > div > div"))
+        )
+        # print('Debuggin: WebDriverWait!!!\n')
 
-        shadow_parent = driver.find_element(By.CSS_SELECTOR, '#comments > div > div > div')
         # get shadow element
         def expand_shadow_element(element):
             return driver.execute_script('return arguments[0].shadowRoot', element)
@@ -67,35 +59,66 @@ class QuoteSpider(scrapy.Spider):
         # loop of click more comments button
         while True:
             try:
-                more_button = shadow_root.find_element(By.CSS_SELECTOR, 'div.spcv_loadMoreCommentsContainer > button')
-                ActionChains(driver).move_to_element(more_button).perform()
-                more_button.click()
-                time.sleep(3) # implicit wait
+                more_comments_btn = shadow_root.find_element(By.CSS_SELECTOR, 'div.spcv_loadMoreCommentsContainer > button')
+                ActionChains(driver).move_to_element(more_comments_btn).perform()
+                more_comments_btn.click()
+                time.sleep(5) # implicit wait
             except Exception as error:
                 break
-            
-        comments_el = shadow_root.find_elements(By.CSS_SELECTOR, 'li.spcv_list-item')
-        comments = []
+        
+        def expand_more_element(css_selector):
+            more_elements = shadow_root.find_elements(By.CSS_SELECTOR, css_selector)
+            if(len(more_elements) == 0): 
+                return False
+            # print(f'More elements length: {len(more_elements)} with {css_selector}')
+            for btn in more_elements:
+                ActionChains(driver).move_to_element(btn).perform()
+                btn.click()
+                time.sleep(3) # implicit wait
+            return True
 
-        # class Comment:
-        #     def __init__(self):
-        #         self.name = ""
-        #         self.time = ""
-        #         self.text = ""
-        #         self.thumbs_up = 0
-        #         self.thumbs_down = 0
-        #         self.child_comment = {}
+        # show more replies (구조 상 show N replies와 N reply 버튼 섞임)
+        while True:
+            if expand_more_element('div.spcv_rootComment > button, div.spcv_isChildrenFetchedAlready > button') is False:
+                break
 
-        for comment_el in comments_el:
-            # comment = Comment()
-            print(comment_el.find_element(By.CSS_SELECTOR, '.spcv_root-message .src-components-Username-index__wrapper').text)
+        # expand comments (see more...)
+        expand_more_element('div.src-entities-Text-TextEntity__text-entity > span')
 
-        item['comments'] = comments_el
+        #comment containers    
+        comments_el = shadow_root.find_elements(By.CSS_SELECTOR, '.spcv_messages-list .spcv_list-item > article')
+
+        def set_comments(comments_array, comments_element):
+            # print(f'This is set_comments {len(comments_element)}\n')
+            for index, comment_container in enumerate(comments_element):
+                # print(f'This is for loop {index}\n')
+                comment = HuffpostscrapCommentItem()
+
+                # Does comment violated policy?
+                try:
+                    comment['name'] = comment_container.find_element(By.CSS_SELECTOR, '.spcv_root-message .src-components-Username-index__wrapper').text
+                    comment['time'] = comment_container.find_element(By.TAG_NAME, 'time').text
+                    comment['text'] = comment_container.find_element(By.CSS_SELECTOR, '.src-entities-Text-TextEntity__text-entity').text
+                    vote = comment_container.find_elements(By.CSS_SELECTOR, '.components-MessageActions-components-VoteButtons-index__votesCounter')
+                    comment['thumbs_up'] = vote[0].text
+                    comment['thumbs_down'] = vote[1].text
+                except Exception as error:
+                    # This comment violated our policy
+                    comment['name'] = ""
+                    comment['time'] = ""
+                    comment['text'] = "This comment violated our policy"
+                    comment['thumbs_up'] = "0"
+                    comment['thumbs_down'] = "0"
+                # Does comment has child?
+                child_elements = comment_container.find_elements(By.CSS_SELECTOR, ':scope > div > div > ul > li')
+                # print(f"There is a child for {index} with length: {len(child_elements)}\n")
+                if len(child_elements) > 0:
+                    comment['child'] = set_comments([], child_elements)
+                else:
+                    comment['child'] = []
+                comments_array.append(comment)
+            return comments_array
+
+        item['comments'] = set_comments([], comments_el)
         driver.quit()
         yield item
-
-        # for quote in response.css('div.quote'):
-        #     item['text'] = quote.css('span.text::text').get()
-        #     item['author'] = quote.css('small.author::text').get()
-        #     item['tags'] = quote.css('div.tags a.tag::text').get()
-        #     yield item

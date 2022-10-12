@@ -5,17 +5,21 @@
 
 import scrapy
 
-
-class HuffpostscrapItem(scrapy.Item):
-    # define the fields for your item here like:
+# define the fields for your item here like:
+# class Item(scrapy.Item):
     # name = scrapy.Field()
 
-    # text = scrapy.Field()
-    # author = scrapy.Field()
-    # tags = scrapy.Field()
-
+class HuffpostscrapItem(scrapy.Item):
     headline = scrapy.Field()
     dek = scrapy.Field()
     author = scrapy.Field()
     time = scrapy.Field()
     comments = scrapy.Field()
+
+class HuffpostscrapCommentItem(scrapy.Item):
+    name = scrapy.Field()
+    time = scrapy.Field()
+    text = scrapy.Field()
+    thumbs_up = scrapy.Field()
+    thumbs_down = scrapy.Field()
+    child = scrapy.Field()
