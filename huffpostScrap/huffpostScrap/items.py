@@ -14,6 +14,7 @@ class HuffpostscrapItem(scrapy.Item):
     dek = scrapy.Field()
     author = scrapy.Field()
     time = scrapy.Field()
+    contents = scrapy.Field()
     comments = scrapy.Field()
 
 class HuffpostscrapCommentItem(scrapy.Item):
