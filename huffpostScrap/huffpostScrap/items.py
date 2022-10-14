@@ -10,6 +10,7 @@ import scrapy
     # name = scrapy.Field()
 
 class HuffpostscrapItem(scrapy.Item):
+    label = scrapy.Field()
     headline = scrapy.Field()
     dek = scrapy.Field()
     author = scrapy.Field()
