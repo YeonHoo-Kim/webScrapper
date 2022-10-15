@@ -1,3 +1,4 @@
+import platform
 import scrapy
 import threading
 import time
@@ -15,9 +16,9 @@ from selenium.webdriver.support.ui import WebDriverWait
 start_time = time.time()
 
 options = Options()
-# options.add_argument('headless') # headless모드 브라우저가 뜨지 않고 실행됩니다.
+options.add_argument('headless') # headless모드 브라우저가 뜨지 않고 실행됩니다.
 options.add_argument("--blink-setting=imagesEnable=false"); # 페이지 로딩에서 이미지 제외
-# options.add_argument("disable-gpu") # gpu 비활성화
+options.add_argument("disable-gpu") # gpu 비활성화
 
 base_url = 'https://www.huffpost.com/archive'
 url_list = []
@@ -46,8 +47,8 @@ class shadow_attached(object):
     def __call__(self, driver):
         element = driver.find_element(*self.locator)
         shadow = driver.execute_script('return arguments[0].shadowRoot', element)
-        # 댓글 슬라이더에 댓글 더보기 버튼이 보이면 shadow dom이 rendered 됨으로 간주
-        return len(shadow.find_elements(By.CSS_SELECTOR, 'div.spcv_loadMoreCommentsContainer > button')) > 0
+        # 댓글 슬라이더에 conversation-footer 영역이 보이면 shadow dom이 rendered 됨으로 간주
+        return len(shadow.find_elements(By.CSS_SELECTOR, 'div.spcv_conversation-footer')) > 0
 
 # custom conditions to click button (show more comments)
 class list_added(object):
@@ -75,12 +76,13 @@ class QuoteSpider(scrapy.Spider):
         # 'https://www.huffpost.com/entry/covid-rapid-test-swab-nose-throat_l_61cf6bbae4b0bcd219539517#comments'
         # 'https://www.huffpost.com/entry/sandia-peak-tram-people-stuck_n_61d0b532e4b0bcd2195410ca#comments'
         # 'https://www.huffpost.com/entry/ap-eu-austria-obit-gertrude-pressburger_n_61d0aaa6e4b0bcd219540b75#comments'
-        'https://www.huffpost.com/entry/marine-corps-206-covid-vaccine-discharges_n_61d241e6e4b0bcd21954c1d4#comments'
+        # 'https://www.huffpost.com/entry/marine-corps-206-covid-vaccine-discharges_n_61d241e6e4b0bcd21954c1d4#comments'
+        'https://www.huffpost.com/entry/us-supreme-court-stolen-painting_n_6261c4b5e4b0ea625c04dc73#comments'
         # no comments
         # 'https://www.huffpost.com/entry/kelly-ernby-dead-orange-county-da_n_61d43584e4b061afe3aa9d09#comments'
     ]
     custom_settings = {
-        # 'LOG_LEVEL': 'WARN'
+        'LOG_LEVEL': 'WARN'
     }
 
     def parse(self, response):
@@ -119,7 +121,10 @@ class QuoteSpider(scrapy.Spider):
         item['contents'] = ' '.join(paragraphs)
 
         # use selenium to retrieve a shadow dom (each drivers)
-        driver = webdriver.Chrome('/Users/r14798/projects/web-scraper/huffpostScrap/chromedriver/chromedriver_mac_arm64', chrome_options=options)
+        if(platform.system() == 'Windows'):
+            driver = webdriver.Chrome('C:/Users/kywho/projects/webScrapper/huffpostScrap/chromedriver/chromedriver_windows', chrome_options=options)
+        else:
+            driver = webdriver.Chrome('/Users/r14798/projects/web-scraper/huffpostScrap/chromedriver/chromedriver_mac_arm64', chrome_options=options)
         driver.get(f'{response.url}#comments')
         print('\nDebuggin: Driver get Success!!!\n')
         # explicit wait
