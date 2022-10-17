@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 from huffpostScrap.items import HuffpostscrapCommentItem
 from huffpostScrap.items import HuffpostscrapItem
 from selenium import webdriver
-from selenium.common.exceptions import TimeoutException
 from selenium.webdriver import ActionChains
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -73,16 +72,23 @@ class QuoteSpider(scrapy.Spider):
     start_urls = [
         # comments
         # 'https://www.huffpost.com/entry/ap-us-capitol-riot-misinformation-lies_n_61d05615e4b0bb04a6398a8f'
-        # 'https://www.huffpost.com/entry/covid-rapid-test-swab-nose-throat_l_61cf6bbae4b0bcd219539517#comments'
+        'https://www.huffpost.com/entry/covid-rapid-test-swab-nose-throat_l_61cf6bbae4b0bcd219539517#comments'
         # 'https://www.huffpost.com/entry/sandia-peak-tram-people-stuck_n_61d0b532e4b0bcd2195410ca#comments'
         # 'https://www.huffpost.com/entry/ap-eu-austria-obit-gertrude-pressburger_n_61d0aaa6e4b0bcd219540b75#comments'
         # 'https://www.huffpost.com/entry/marine-corps-206-covid-vaccine-discharges_n_61d241e6e4b0bcd21954c1d4#comments'
-        'https://www.huffpost.com/entry/us-supreme-court-stolen-painting_n_6261c4b5e4b0ea625c04dc73#comments'
+        # 'https://www.huffpost.com/entry/us-supreme-court-stolen-painting_n_6261c4b5e4b0ea625c04dc73#comments'
         # no comments
         # 'https://www.huffpost.com/entry/kelly-ernby-dead-orange-county-da_n_61d43584e4b061afe3aa9d09#comments'
     ]
     custom_settings = {
-        'LOG_LEVEL': 'WARN'
+        'CONCURRENT_REQUESTS': 30,
+        'LOG_LEVEL': 'WARN',
+        'FEEDS': {
+            'posts.json': {
+                'format': 'json'
+            }
+        },
+        'FEED_EXPORT_ENCODING': 'utf-8'
     }
 
     def parse(self, response):
@@ -232,10 +238,10 @@ class QuoteSpider(scrapy.Spider):
                 return comments_array
 
             item['comments'] = set_comments([], comments_el)
-            # driver.quit()
         except Exception as error:
             # no comments
             item['comments'] = []
+        driver.quit()
         yield item
 
 print(f'\nThreading Active count: {threading.active_count()}')

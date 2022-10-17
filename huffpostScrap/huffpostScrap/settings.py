@@ -88,5 +88,5 @@ ROBOTSTXT_OBEY = True
 #HTTPCACHE_STORAGE = 'scrapy.extensions.httpcache.FilesystemCacheStorage'
 
 # json file unicode settings
-FEED = 'json'
-FEED_EXPORT_ENCODING = 'utf-8'
+# FEED = 'json'
+# FEED_EXPORT_ENCODING = 'utf-8'
