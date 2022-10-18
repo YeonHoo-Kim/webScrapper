@@ -2,7 +2,6 @@ import concurrent.futures
 import json
 import platform
 import requests
-import threading
 import time
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor
@@ -17,18 +16,17 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 
-FILE_PATH = "./posts.json"
 PROCESSES = 4
-THREAD_MAX_WORKERS = 8
+THREAD_MAX_WORKERS = 16
 
 base_url = 'https://www.huffpost.com/archive'
-url_list = []
+date_list = []
 posts = []
 
 # 시작일: start_date
 # 종료일: end_date
-start = '2022-04-21'
-end = '2022-04-21'
+start = '2022-01-01'
+end = '2022-01-01'
 
 start_date = datetime.strptime(start, "%Y-%m-%d")
 end_date = datetime.strptime(end, "%Y-%m-%d")
@@ -36,7 +34,7 @@ end_date = datetime.strptime(end, "%Y-%m-%d")
 # 종료일 까지 반복
 while start_date <= end_date:
     dates = start_date.strftime("%Y-%m-%d")
-    url_list.append(f'{base_url}/{dates}')
+    date_list.append(dates)
     # 하루 더하기
     start_date += timedelta(days=1)
 
@@ -97,7 +95,17 @@ def crawl_with_url(url, driver):
     except Exception as error:
         post.author = driver.find_element(By.CSS_SELECTOR, 'span.entry-wirepartner__byline').text
     post.time = driver.find_element(By.CSS_SELECTOR, 'div.timestamp > time').get_attribute('datetime')
-    post.contents = driver.find_element(By.CSS_SELECTOR, '#entry-body p, #entry-body h3').text
+    # p_selectors = [
+    #     '#entry-body h3 > strong',
+    #     '#entry-body p',
+    #     '#entry-body p > em',
+    #     '#entry-body p > em > a',
+    #     '#entry-body p > span',
+    #     '#entry-body p > a',
+    #     '#entry-body p > a > span',
+    # ]
+    ps = driver.find_elements(By.CSS_SELECTOR, '#entry-body p, #entry-body h3')
+    post.contents = ' '.join([x.text for x in ps])
 
     try:
         WebDriverWait(driver, 10, 1).until(
@@ -128,10 +136,32 @@ def crawl_with_url(url, driver):
             # print('\nScroll Success!!!\n')
             more_comments_btns[0].click()
             # print('\nClick Success!!!\n')
-            WebDriverWait(driver, 10).until(list_added((By.CSS_SELECTOR, 'ul.spcv_messages-list > li'), shadow_root, cur_len))
+            try:
+                WebDriverWait(driver, 10).until(list_added((By.CSS_SELECTOR, 'ul.spcv_messages-list > li'), shadow_root, cur_len))
+            except Exception as error:
+                print(error)
             
         # show more replies (구조 상 show N replies와 N reply 버튼 섞임)
+        # 기존은 버튼이 사라지면 wait이 끝나는 구조였으나 6 replies -> show 1 replies 로 버튼이 사라지지 않는 코너케이스로 인해
+        # child reply 개수가 증가하면 wait이 끝나는 구조로 변경 
         print('\nDebuggin: click more replies!!!\n')
+        cur_len = 0
+        while True:
+            show_reply_btns = shadow_root.find_elements(By.CSS_SELECTOR, 'div.spcv_show-more-replies')
+            if len(show_reply_btns) == 0:
+                break
+            for btn in show_reply_btns:
+                btn_parent = btn.find_element(By.XPATH, '..')
+                cur_len = len(btn_parent.find_elements(By.CSS_SELECTOR, ':scope > ul > li'))
+                ActionChains(driver).move_to_element(btn).perform()
+                btn.find_element(By.CSS_SELECTOR, ':scope > button').click()
+                try:
+                    WebDriverWait(driver, 10).until(list_added((By.CSS_SELECTOR, ':scope > ul > li'), btn_parent, cur_len))
+                except Exception as error:
+                    print(error)
+
+        # expand comments (see more...)
+        print('\nDebuggin: see more!!!\n')
         def expand_more_element(css_selector):
             more_elements = shadow_root.find_elements(By.CSS_SELECTOR, css_selector)
             if(len(more_elements) == 0): 
@@ -140,15 +170,13 @@ def crawl_with_url(url, driver):
             for btn in more_elements:
                 ActionChains(driver).move_to_element(btn).perform()
                 btn.click()
+                # reply loading time...
                 # 버튼이 화면에 보이지 않을때까지 기다림
-                WebDriverWait(driver, 10).until(EC.invisibility_of_element(btn))
+                try:
+                    WebDriverWait(driver, 10).until(EC.staleness_of(btn))
+                except Exception as error:
+                    print(error)
             return True
-        while True:
-            if expand_more_element('div.spcv_show-more-replies > button') is False:
-                break
-
-        # expand comments (see more...)
-        print('\nDebuggin: see more!!!\n')
         expand_more_element('div.src-entities-Text-TextEntity__text-entity > span')
 
         #comment containers    
@@ -170,9 +198,9 @@ def crawl_with_url(url, driver):
             
 
         def set_comments(comments_array, comments_element):
-            print(f'\nThis is set_comments {len(comments_element)}\n')
+            # print(f'\nThis is set_comments {len(comments_element)}\n')
             for index, comment_container in enumerate(comments_element):
-                print(f'\nThis is for loop {index}\n')
+                # print(f'\nThis is for loop {index}\n')
                 comment = Comment()
 
                 # Does comment violated policy?
@@ -207,7 +235,7 @@ def crawl_with_url(url, driver):
                     comment.thumbs_down = "0"
                 # Does comment has child?
                 child_elements = comment_container.find_elements(By.CSS_SELECTOR, ':scope > div > div > ul > li')
-                print(f"\nThere is a child for {index} with length: {len(child_elements)}\n")
+                # print(f"\nThere is a child for {index} with length: {len(child_elements)}\n")
                 if len(child_elements) > 0:
                     comment.child = set_comments([], child_elements)
                 else:
@@ -226,7 +254,7 @@ def crawl_with_url(url, driver):
 ##
 def driver_setup():
     options = Options()
-    options.add_argument('headless') # headless모드 브라우저가 뜨지 않고 실행됩니다.
+    # options.add_argument('headless') # headless모드 브라우저가 뜨지 않고 실행됩니다.
     options.add_argument("disable-gpu") # gpu 비활성화
 
     if(platform.system() == 'Windows'):
@@ -235,13 +263,13 @@ def driver_setup():
         driver = webdriver.Chrome('/Users/r14798/projects/web-scraper/huffpostScrap/chromedriver/chromedriver_mac_arm64', options=options)
     return driver
     # driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-    return driver
+    # return driver
 ##
 # assign tasks(crawl_with_url) to thread
 ##
 def do_thread_assign(urls):
     thread_list = []
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=THREAD_MAX_WORKERS) as executor:
         for url in urls:
             driver = driver_setup()
             thread_list.append(executor.submit(crawl_with_url, url, driver))
@@ -264,7 +292,7 @@ def get_article_urls(url):
     for a_tag in a_tags:
         links.append(a_tag.get('href'))
     return links
-    # return ['https://www.huffpost.com/entry/us-biden-climate-earth-day_n_626104bae4b08393e1c0c7ac']
+    # return ['https://www.huffpost.com/entry/philadelphia-end-mask-mandate_n_6262063be4b07c34e9deba08']
 
 if __name__ == "__main__":
     start_time = time.time()
@@ -274,15 +302,15 @@ if __name__ == "__main__":
 
     print('\nDebuggin: archive crawl start!!!\n')
 
-    for url in url_list:
-        do_thread_assign(get_article_urls(url))
+    for date in date_list:
+        do_thread_assign(get_article_urls(f'{base_url}/{date}'))
+        
+        print(f'\nDebuggin: json outfile({date}) start!!!\n')
+        # print(posts)
+        with open(f'./posts_{date}.json', 'w', encoding='utf-8') as outfile:
+            json.dump(posts, outfile, default=str, indent=4, ensure_ascii=False)
+        print(f'\nDebuggin: json outfile({date}) end!!!\n')
     
     print('\nDebuggin: archive crawling finished!!!\n')
-    print('\nDebuggin: json outfile start!!!\n')
-
-    print(posts)
-    
-    with open(FILE_PATH, 'w', encoding='utf-8') as outfile:
-        json.dump(posts, outfile, default=str, indent=4, ensure_ascii=False)
     
     print("--- elapsed time %s seconds ---" % (time.time() - start_time))
