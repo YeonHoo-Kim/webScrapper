@@ -170,16 +170,25 @@ def crawl_with_url(url, driver):
             
 
         def set_comments(comments_array, comments_element):
-            # print(f'\nThis is set_comments {len(comments_element)}\n')
+            print(f'\nThis is set_comments {len(comments_element)}\n')
             for index, comment_container in enumerate(comments_element):
-                # print(f'\nThis is for loop {index}\n')
+                print(f'\nThis is for loop {index}\n')
                 comment = Comment()
 
                 # Does comment violated policy?
                 try:
                     comment.name = comment_container.find_element(By.CSS_SELECTOR, f'{default_sel} span.src-components-Username-index__wrapper').text
                     comment.time = comment_container.find_element(By.TAG_NAME, 'time').text
-                    comment.text = comment_container.find_element(By.CSS_SELECTOR, f'{default_sel} div.src-entities-Text-TextEntity__text-entity').text
+                    # get text and imgurl
+                    texts = comment_container.find_element(By.CSS_SELECTOR, f'{default_sel} div.src-entities-MessageEntities-MessageEntities__message-entities')
+                    texts = texts.find_elements(By.CSS_SELECTOR, ':scope > span > div, :scope > button > span > img')
+                    new_str = []
+                    for t in texts:
+                        if t.get_attribute("src") != None:
+                            new_str.append(t.get_attribute("src"))
+                        else:
+                            new_str.append(t.text)
+                    comment.text = ' '.join(new_str)
                     vote = comment_container.find_element(By.CSS_SELECTOR, f'{default_sel} div.components-MessageActions-components-VoteButtons-index__votesContainer')
                     vote_num = get_votes(vote)
                     comment.thumbs_up = vote_num[0]
@@ -189,12 +198,16 @@ def crawl_with_url(url, driver):
                     # print('\n Comment has been deleted or violated!!! \n')
                     comment.name = ""
                     comment.time = ""
-                    comment.text = comment_container.find_element(By.CSS_SELECTOR, f'{default_sel} div.components-MessageContent-components-BlockedContent-index__blockedContent > span').text
+                    try:
+                        comment.text = comment_container.find_element(By.CSS_SELECTOR, f'{default_sel} div.components-MessageContent-components-BlockedContent-index__blockedContent > span').text
+                    except Exception as error:
+                        print(error)
+                        comment.text = "Error following text does not exist!"
                     comment.thumbs_up = "0"
                     comment.thumbs_down = "0"
                 # Does comment has child?
                 child_elements = comment_container.find_elements(By.CSS_SELECTOR, ':scope > div > div > ul > li')
-                # print(f"\nThere is a child for {index} with length: {len(child_elements)}\n")
+                print(f"\nThere is a child for {index} with length: {len(child_elements)}\n")
                 if len(child_elements) > 0:
                     comment.child = set_comments([], child_elements)
                 else:
@@ -203,6 +216,7 @@ def crawl_with_url(url, driver):
             return comments_array
         post.comments = set_comments([], comments_el)
     except Exception as error:
+        print(error)
         post.comments = []
     driver.quit()
     posts.append(post.__dict__)
@@ -213,7 +227,6 @@ def crawl_with_url(url, driver):
 def driver_setup():
     options = Options()
     options.add_argument('headless') # headless모드 브라우저가 뜨지 않고 실행됩니다.
-    options.add_argument("--blink-setting=imagesEnable=false"); # 페이지 로딩에서 이미지 제외
     options.add_argument("disable-gpu") # gpu 비활성화
 
     if(platform.system() == 'Windows'):
