@@ -10,14 +10,15 @@ from multiprocessing import Pool
 from selenium import webdriver
 from selenium.webdriver import ActionChains
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
+# from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-from webdriver_manager.chrome import ChromeDriverManager
+# from webdriver_manager.chrome import ChromeDriverManager
 
 PROCESSES = 4
-THREAD_MAX_WORKERS = 16
+THREAD_MAX_WORKERS = 8
 
 base_url = 'https://www.huffpost.com/archive'
 date_list = []
@@ -88,13 +89,15 @@ def crawl_with_url(url, driver):
     post = Post()
     driver.get(f'{url}#comments')
     post.label = driver.find_element(By.CSS_SELECTOR, 'header.entry__header > div.top-header > div.label a.label__link > span').text
-    post.headline = driver.find_element(By.CSS_SELECTOR, 'h1.headline').text
+    head = driver.find_element(By.CSS_SELECTOR, 'h1.headline').text
+    post.headline = head
     post.dek = driver.find_element(By.CSS_SELECTOR, 'div.dek').text
     try:
         post.author = driver.find_element(By.CSS_SELECTOR, 'h2.author-card__name > a.cet-internal-link > span').text
     except Exception as error:
         post.author = driver.find_element(By.CSS_SELECTOR, 'span.entry-wirepartner__byline').text
-    post.time = driver.find_element(By.CSS_SELECTOR, 'div.timestamp > time').get_attribute('datetime')
+    t = driver.find_element(By.CSS_SELECTOR, 'div.timestamp > time').get_attribute('datetime')
+    post.time = t
     # p_selectors = [
     #     '#entry-body h3 > strong',
     #     '#entry-body p',
@@ -114,7 +117,7 @@ def crawl_with_url(url, driver):
                 shadow_attached((By.CSS_SELECTOR, "#comments > div.comments__container > div > div"))
             )
         )
-        print('\nDebuggin: WebDriverWait!!!\n')
+        print(f'\nHeadline: {head}\nDate: {t}\nDebuggin: WebDriverWait!!!\n')
             
         # get shadow parent
         shadow_parent = driver.find_element(By.CSS_SELECTOR, "#comments > div.comments__container > div > div")
@@ -125,57 +128,63 @@ def crawl_with_url(url, driver):
         shadow_root = expand_shadow_element(shadow_parent)
 
         # loop of click more comments button
-        print('\nDebuggin: click more comments button!!!\n')
+        print(f'\nHeadline: {head}\nDate: {t}\nDebuggin: click more comments button!!!\n')
         cur_len = 0
+        
         while True:
             cur_len = len(shadow_root.find_elements(By.CSS_SELECTOR, 'ul.spcv_messages-list > li'))
             more_comments_btns = shadow_root.find_elements(By.CSS_SELECTOR, 'div.spcv_loadMoreCommentsContainer > button')
             if len(more_comments_btns) == 0:
                 break
-            ActionChains(driver).move_to_element(more_comments_btns[0]).perform()
+            ActionChains(driver).move_to_element(more_comments_btns[0]).click(more_comments_btns[0]).perform()
             # print('\nScroll Success!!!\n')
-            more_comments_btns[0].click()
             # print('\nClick Success!!!\n')
             try:
                 WebDriverWait(driver, 10).until(list_added((By.CSS_SELECTOR, 'ul.spcv_messages-list > li'), shadow_root, cur_len))
             except Exception as error:
-                print(error)
+                print(f'\nError with click more comments button: {error}')
             
         # show more replies (구조 상 show N replies와 N reply 버튼 섞임)
         # 기존은 버튼이 사라지면 wait이 끝나는 구조였으나 6 replies -> show 1 replies 로 버튼이 사라지지 않는 코너케이스로 인해
         # child reply 개수가 증가하면 wait이 끝나는 구조로 변경 
-        print('\nDebuggin: click more replies!!!\n')
+        print(f'\nHeadline: {head}\nDate: {t}\nDebuggin: click more replies!!!\n')
         cur_len = 0
+
         while True:
             show_reply_btns = shadow_root.find_elements(By.CSS_SELECTOR, 'div.spcv_show-more-replies')
+            print(f'\nHeadline: {head}\nDate: {t}\nDebuggin: reply btn count: {len(show_reply_btns)}\n')
             if len(show_reply_btns) == 0:
                 break
-            for btn in show_reply_btns:
+            for index, btn in enumerate(show_reply_btns):
+                print(f'reply: {index + 1}')
                 btn_parent = btn.find_element(By.XPATH, '..')
                 cur_len = len(btn_parent.find_elements(By.CSS_SELECTOR, ':scope > ul > li'))
-                ActionChains(driver).move_to_element(btn).perform()
-                btn.find_element(By.CSS_SELECTOR, ':scope > button').click()
+                clickable_btn = btn.find_element(By.CSS_SELECTOR, ':scope > button')
+                ActionChains(driver).move_to_element(btn).click(clickable_btn).perform()
+                # 연속된 동작은 가능한 하나의 ActionChains에서 동작해야 성능이 올라간다
+                # 아래 코드의 경우 huffingtonPost의 기사 댓글이 1000개를 넘어가면 무조건 crash 발생... (메모리 점유율이 2GB를 초과했다)
+                # ActionChains(driver).move_to_element(btn).perform()
+                # btn.click()
                 try:
-                    WebDriverWait(driver, 10).until(list_added((By.CSS_SELECTOR, ':scope > ul > li'), btn_parent, cur_len))
+                    WebDriverWait(driver, 15).until(list_added((By.CSS_SELECTOR, ':scope > ul > li'), btn_parent, cur_len))
                 except Exception as error:
-                    print(error)
+                    print(f'\nError with show more replies: {error}')
 
         # expand comments (see more...)
-        print('\nDebuggin: see more!!!\n')
+        print(f'\nHeadline: {head}\nDate: {t}\nDebuggin: see more!!!\n')
         def expand_more_element(css_selector):
             more_elements = shadow_root.find_elements(By.CSS_SELECTOR, css_selector)
             if(len(more_elements) == 0): 
                 return False
             # print(f'\nMore elements length: {len(more_elements)} with {css_selector}')
             for btn in more_elements:
-                ActionChains(driver).move_to_element(btn).perform()
-                btn.click()
+                ActionChains(driver).move_to_element(btn).click(btn).perform()
                 # reply loading time...
                 # 버튼이 화면에 보이지 않을때까지 기다림
                 try:
-                    WebDriverWait(driver, 10).until(EC.staleness_of(btn))
+                    WebDriverWait(driver, 15).until(EC.invisibility_of_element(btn))
                 except Exception as error:
-                    print(error)
+                    print(f'\nError with see more: {error}')
             return True
         expand_more_element('div.src-entities-Text-TextEntity__text-entity > span')
 
@@ -229,7 +238,7 @@ def crawl_with_url(url, driver):
                     try:
                         comment.text = comment_container.find_element(By.CSS_SELECTOR, f'{default_sel} div.components-MessageContent-components-BlockedContent-index__blockedContent > span').text
                     except Exception as error:
-                        print(error)
+                        print(f'\nError with comment text: {error}')
                         comment.text = "Error following text does not exist!"
                     comment.thumbs_up = "0"
                     comment.thumbs_down = "0"
@@ -242,10 +251,14 @@ def crawl_with_url(url, driver):
                     comment.child = []
                 comments_array.append(comment.__dict__)
             return comments_array
+        # set comments
+        print(f'\nHeadline: {head}\nDate: {t}\nDebuggin: Set Comments!!!\n')
         post.comments = set_comments([], comments_el)
     except Exception as error:
-        print(error)
+        print(f'\nError with getting comments: {error}')
         post.comments = []
+
+    print(f'\nHeadline: {head}\nDate: {t}\nDebuggin: Crawl Success!!!\n')
     driver.quit()
     posts.append(post.__dict__)
 
@@ -254,13 +267,18 @@ def crawl_with_url(url, driver):
 ##
 def driver_setup():
     options = Options()
-    # options.add_argument('headless') # headless모드 브라우저가 뜨지 않고 실행됩니다.
-    options.add_argument("disable-gpu") # gpu 비활성화
+    options.add_argument('--no-sandbox')
+    options.add_argument('--headless') # headless모드 브라우저가 뜨지 않고 실행됩니다.
+    options.add_argument("--disable-gpu") # gpu 비활성화
+    options.add_argument('--disable-dev-shm-usage') # /dev/shm 디렉토리를 사용하지 않음 (local pc 메모리 사용)
+
+    # d = DesiredCapabilities().CHROME
+    # d["pageLoadStrategy"] = "none"
 
     if(platform.system() == 'Windows'):
-        driver = webdriver.Chrome('C:/Users/kywho/projects/webScrapper/huffpostScrap/chromedriver/chromedriver_windows', options=options)
+        driver = webdriver.Chrome(executable_path='C:/Users/kywho/projects/webScrapper/huffpostScrap/chromedriver/chromedriver_windows', options=options)
     else:
-        driver = webdriver.Chrome('/Users/r14798/projects/web-scraper/huffpostScrap/chromedriver/chromedriver_mac_arm64', options=options)
+        driver = webdriver.Chrome(executable_path='/Users/r14798/projects/web-scraper/huffpostScrap/chromedriver/chromedriver_mac_arm64', options=options, service_args=["--verbose", "--log-path=/Users/r14798/projects/web-scraper/huffpostScrap/chromedriver/chromedriver.log"])
     return driver
     # driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     # return driver
@@ -291,8 +309,14 @@ def get_article_urls(url):
     a_tags = soup.select('div.card__content > a')
     for a_tag in a_tags:
         links.append(a_tag.get('href'))
-    return links
-    # return ['https://www.huffpost.com/entry/philadelphia-end-mask-mandate_n_6262063be4b07c34e9deba08']
+    print(links)
+    # return links
+    return [
+        # 'https://www.huffpost.com/entry/ap-us-capitol-riot-misinformation-lies_n_61d05615e4b0bb04a6398a8f' # 2.2k fail
+        # 'https://www.huffpost.com/entry/sandia-peak-tram-people-stuck_n_61d0b532e4b0bcd2195410ca' # 100 success
+        'https://www.huffpost.com/entry/alexandria-ocasio-cortez-steve-cortes-florida-sandals-feet_n_61cf9f2de4b04b42ab7441ee#comments' # 1k fail
+        # 'https://www.huffpost.com/entry/marine-corps-206-covid-vaccine-discharges_n_61d241e6e4b0bcd21954c1d4#comments' # 500 success
+    ]
 
 if __name__ == "__main__":
     start_time = time.time()
